@@ -1,0 +1,10 @@
+#!/bin/sh
+
+echo "I will sleep for a day... after I print out the contents of the file in the first command-line argument:"
+echo ""
+sleep 1
+cat $1
+sleep 1
+echo ""
+echo "Thank you... sleeping for a while now..."
+sleep 86400

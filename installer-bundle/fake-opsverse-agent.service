@@ -1,0 +1,10 @@
+[Unit]
+Description=Fake OpsVerse Agent
+
+[Service]
+User=root
+ExecStart=/usr/local/bin/fake-opsverse-telemetry-agent /etc/opsverse/fake-agent-config.yaml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
