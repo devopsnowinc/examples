@@ -6,7 +6,7 @@ There's a usecase that traces exist in old storage and we want to move those to 
 
 There are two parts:
 -  Download/export all the traces (per service) locally
--  Run migrator tool to convert jaeger-query JSON to ClickHouse compatible model Inser
+-  Run migrator tool to convert jaeger-query JSON to ClickHouse compatible model
 -  Run the `.sql` on ClickHouse instance (`INSERT` statements)
 
 ## The Steps
@@ -19,11 +19,11 @@ There are two parts:
 2. This will create `./traces-<service>.json` files in your current directory
 3. When ready, run the migrator tool (will add link to `main.go` compiled binary here) to create corresponding ClickHouse inserts
 
-        $ ./trace-migration-tool -service console-ui --file single-trace-console-ui-test-new.json > import-traces.sql 
+        $ ./trace-migration-tool -service console-ui --file trace-console-ui.json > import-traces.sql
         2022/09/09 18:01:18 Generating ClickHouse INSERT statements for service console-ui via file single-trace-console-ui-test-new.json...
         2022/09/09 18:01:23 Done! 
 
-4. Copy the generated import-traces.sql to the clickhouse pod and run:
+4. Copy the generated `import-traces.sql` to the clickhouse pod and run:
 
         $ clickhouse-client < /tmp/import.sql
 
