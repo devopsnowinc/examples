@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/jaegertracing/jaeger/model"
 	"io/ioutil"
 	"log"
 	"strconv"
@@ -123,12 +124,50 @@ func main() {
 
 			// Let's also insert into index
 			m := convertCHSpanModelToIndexModel(spanModel, service)
-			fmt.Printf("INSERT INTO jaeger_index_local (timestamp, traceID, service, operation, durationUs, tags) VALUES ('%s', '%s', '%s', '%s', '%s', %s);\n", strconv.Itoa(int(span.StartTime/int64(time.Millisecond))), m.TraceId, m.Service, m.Operation, strconv.Itoa(int(m.DurationUs)), m.Tags)
+			fmt.Printf("INSERT INTO jaeger_index_local (timestamp, traceID, service, operation, durationUs, tags) VALUES ('%s', '%s', '%s', '%s', '%s', %s);\n", strconv.Itoa(int(span.StartTime/int64(time.Millisecond))), span.TraceId, m.Service, m.Operation, strconv.Itoa(int(m.DurationUs)), m.Tags)
+
+			t, _ := model.TraceIDFromString(m.TraceId)
+			//generatedTraceId, _  := model.TraceIDFromBytes([]byte(m.TraceId))
+			fmt.Printf("%v\n", t)
+			fmt.Printf("%d\n", t.High)
+			fmt.Printf("%d\n", t.Low)
+
+			// this adds quotes to it
+			b64t, _ := t.MarshalJSON()
+			encodedTrace := string(b64t[1 : len(b64t)-1])
+
+			//fmt.Printf("%s\n", string(b64t))
+			fmt.Printf("%s\n", encodedTrace)
+			fmt.Printf("%s\n", convertToTraceIdModel(m.TraceId))
 		}
 		break
 	}
 
 	log.Println("Done!")
+}
+
+// Use jaeger lib at https://github.com/jaegertracing/jaeger/blob/c1bb2946e670129314bf88d9730d8ed7566766d4/model/ids.go
+func convertToTraceIdModel(sTrace string) string {
+	t, _ := model.TraceIDFromString(sTrace)
+
+	// MarshalJSON adds quotes to it string
+	// so we have to make sure to trim those
+	b64t, _ := t.MarshalJSON()
+	s := string(b64t[1 : len(b64t)-1])
+
+	return s
+}
+
+// Use jaeger lib at https://github.com/jaegertracing/jaeger/blob/c1bb2946e670129314bf88d9730d8ed7566766d4/model/ids.go
+func convertToSpanIdModel(sSpan string) string {
+	span, _ := model.SpanIDFromString(sSpan)
+
+	// MarshalJSON adds quotes to it string
+	// so we have to make sure to trim those
+	b64s, _ := span.MarshalJSON()
+	s := string(b64s[1 : len(b64s)-1])
+
+	return s
 }
 
 func convertCHSpanModelToIndexModel(sm CHSpanModel, svc string) CHIndexModel {
@@ -155,8 +194,8 @@ func convertCHSpanModelToIndexModel(sm CHSpanModel, svc string) CHIndexModel {
 func convertUISpanToCHSpanModel(s JaegerUISpan) CHSpanModel {
 	var c CHSpanModel
 
-	c.TraceId = s.TraceId
-	c.SpanId = s.SpanId
+	c.TraceId = convertToTraceIdModel(s.TraceId)
+	c.SpanId = convertToSpanIdModel(s.SpanId)
 	c.OperationName = s.OperationName
 	c.StartTime = time.Unix(s.StartTime/int64(time.Millisecond), 0).UTC().Format(time.RFC3339)
 	c.Duration = s.Duration
