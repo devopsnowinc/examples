@@ -17,8 +17,9 @@ type JaegerUIModel struct {
 }
 
 type JaegerUITrace struct {
-	TraceId string         `json:"traceID"`
-	Spans   []JaegerUISpan `json:"spans"`
+	TraceId   string                     `json:"traceID"`
+	Spans     []JaegerUISpan             `json:"spans"`
+	Processes map[string]JaegerUIProcess `json:"processes"`
 }
 
 type JaegerUISpan struct {
@@ -29,6 +30,7 @@ type JaegerUISpan struct {
 	SpanId        string              `json:"spanID"`
 	Tags          []JaegerUITag       `json:"tags"`
 	TraceId       string              `json:"traceID"`
+	Process       string              `json:"processID"`
 }
 
 type JaegerUIReference struct {
@@ -38,9 +40,14 @@ type JaegerUIReference struct {
 }
 
 type JaegerUITag struct {
-	Key   string `json:"key"`
-	Type  string `json:"type"`
-	Value string `json:"value"`
+	Key   string      `json:"key"`
+	Type  string      `json:"type"`
+	Value interface{} `json:"value"`
+}
+
+type JaegerUIProcess struct {
+	ServiceName string        `json:"serviceName"`
+	Tags        []JaegerUITag `json:"tags"`
 }
 
 type CHSpanModel struct {
@@ -51,6 +58,8 @@ type CHSpanModel struct {
 	StartTime     string        `json:"start_time"`
 	Duration      int64         `json:"duration"`
 	Tags          []CHTag       `json:"tags"`
+	Logs          []string      `json:"logs"`
+	Process       CHProcess     `json:"process"`
 }
 
 type CHReference struct {
@@ -61,6 +70,11 @@ type CHReference struct {
 type CHTag struct {
 	Key   string `json:"key"`
 	Value string `json:"v_str"`
+}
+
+type CHProcess struct {
+	ServiceName string  `json:"service_name"`
+	Tags        []CHTag `json:"tags"`
 }
 
 type CHIndexModel struct {
@@ -113,7 +127,7 @@ func main() {
 		for _, span := range trace.Spans {
 			var serialized []byte
 			//serialized, err = json.Marshal(span)
-			spanModel := convertUISpanToCHSpanModel(span)
+			spanModel := convertUISpanToCHSpanModel(span, trace.Processes)
 			serialized, err = json.Marshal(spanModel)
 			if err != nil {
 				log.Fatal("Error during Marshalling of span: ", err)
@@ -126,19 +140,6 @@ func main() {
 			m := convertCHSpanModelToIndexModel(spanModel, service)
 			fmt.Printf("INSERT INTO jaeger_index_local (timestamp, traceID, service, operation, durationUs, tags) VALUES ('%s', '%s', '%s', '%s', '%s', %s);\n", strconv.Itoa(int(span.StartTime/int64(time.Millisecond))), span.TraceId, m.Service, m.Operation, strconv.Itoa(int(m.DurationUs)), m.Tags)
 
-			t, _ := model.TraceIDFromString(m.TraceId)
-			//generatedTraceId, _  := model.TraceIDFromBytes([]byte(m.TraceId))
-			fmt.Printf("%v\n", t)
-			fmt.Printf("%d\n", t.High)
-			fmt.Printf("%d\n", t.Low)
-
-			// this adds quotes to it
-			b64t, _ := t.MarshalJSON()
-			encodedTrace := string(b64t[1 : len(b64t)-1])
-
-			//fmt.Printf("%s\n", string(b64t))
-			fmt.Printf("%s\n", encodedTrace)
-			fmt.Printf("%s\n", convertToTraceIdModel(m.TraceId))
 		}
 		break
 	}
@@ -181,7 +182,7 @@ func convertCHSpanModelToIndexModel(sm CHSpanModel, svc string) CHIndexModel {
 
 	var tags []string
 	for _, tag := range sm.Tags {
-		rawkv := "'" + tag.Key + "=" + tag.Value + "'"
+		rawkv := "'" + tag.Key + "=" + sanitizeTagValue(tag.Value) + "'"
 		//rawkv := tag.Key+"="+tag.Value
 		tags = append(tags, rawkv)
 	}
@@ -191,34 +192,55 @@ func convertCHSpanModelToIndexModel(sm CHSpanModel, svc string) CHIndexModel {
 	return im
 }
 
-func convertUISpanToCHSpanModel(s JaegerUISpan) CHSpanModel {
+func sanitizeTagValue(v string) string {
+	s := v
+
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", " ")
+
+	return s
+}
+
+func convertUISpanToCHSpanModel(s JaegerUISpan, procMap map[string]JaegerUIProcess) CHSpanModel {
 	var c CHSpanModel
 
 	c.TraceId = convertToTraceIdModel(s.TraceId)
 	c.SpanId = convertToSpanIdModel(s.SpanId)
 	c.OperationName = s.OperationName
-	c.StartTime = time.Unix(s.StartTime/int64(time.Millisecond), 0).UTC().Format(time.RFC3339)
+	//c.StartTime = time.Unix(s.StartTime/int64(time.Millisecond), 0).UTC().Format(time.RFC3339)
+	//c.StartTime = time.Unix(s.StartTime/int64(time.Millisecond), 6).UTC().Format(time.RFC3339Nano)
+	c.StartTime = time.Unix(s.StartTime/int64(time.Millisecond), 1).UTC().Format(time.RFC3339Nano)
 	c.Duration = s.Duration
+	//c.Logs = ""
+	c.Process.ServiceName = procMap[s.Process].ServiceName
+	c.Process.Tags = convertUITagToModelTag(procMap[s.Process].Tags)
 
 	var refs []CHReference
 	for _, sref := range s.References {
 		r := CHReference{
-			TraceId: sref.TraceId,
-			SpanId:  sref.SpanId,
+			TraceId: convertToTraceIdModel(sref.TraceId),
+			SpanId:  convertToSpanIdModel(sref.SpanId),
 		}
 		refs = append(refs, r)
 	}
 	c.References = refs
 
+	c.Tags = convertUITagToModelTag(s.Tags)
+
+	return c
+}
+
+func convertUITagToModelTag(uTags []JaegerUITag) []CHTag {
 	var tags []CHTag
-	for _, stag := range s.Tags {
+	for _, utag := range uTags {
+		valAsString := sanitizeTagValue(fmt.Sprintf("%v", utag.Value))
+
 		t := CHTag{
-			Key:   stag.Key,
-			Value: stag.Value,
+			Key:   utag.Key,
+			Value: valAsString,
 		}
 		tags = append(tags, t)
 	}
-	c.Tags = tags
 
-	return c
+	return tags
 }

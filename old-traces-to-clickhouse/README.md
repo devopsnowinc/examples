@@ -29,6 +29,8 @@ There are two parts:
 
 ## Current Issue(s)
 
+### Issue 1 
+
 **UPDATE: RESOLVED** (see commit history)
 
 Right now, after importing old traces to a new instance, I'm seeing jaeger-query throw `500` when looking for those old traces:
@@ -39,7 +41,9 @@ Right now, after importing old traces to a new instance, I'm seeing jaeger-query
 
 I believe this has to do with the encoding of the traceID within the jaeger_spans_local.models -  we may have to encode as `protobuf` (I'll dig this further)
 
-**OPEN:**
+### Issue 2 
+
+**UPDATE: RESOLVED** (see commit history)
 
 After importing old traces, the jaeger-querier seems to `panic` due to clock-skew adjustments:
 
